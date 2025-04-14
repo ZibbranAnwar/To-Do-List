@@ -152,18 +152,21 @@ export default function TodoList() {
         background: 'linear-gradient(to bottom, black, white)',
       }}
     >
-      <button
-        onClick={addTask}
-        className="absolute top-4 right-4 bg-white text-black px-4 py-2 rounded shadow-md hover:bg-gray-400"
-      >
-        Tambah Tugas
-      </button>
-
-      <div className="flex max-w-5xl w-full mx-auto p-4 bg-gray-300 bg-opacity-90 shadow-md rounded-lg">
-        <div className="flex-1 p-4 overflow-y-auto">
-          <h1 className="text-2xl text-black font-bold mb-4 pb-2 border-b-2 border-black text-center">
+      <div className="flex max-w-5xl w-full mx-auto p-4 bg-gray-300 bg-opacity-90 shadow-md rounded-lg flex-col">
+        {/* Header dan tombol */}
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl text-black font-bold pb-2 border-b-2 border-black">
             Hal Yang Harus Dikerjakan
           </h1>
+          <button
+            onClick={addTask}
+            className="bg-gray-700 text-white px-4 py-2 rounded shadow-md hover:bg-gray-400"
+          >
+            Tambah Tugas
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
           <ul>
             <AnimatePresence>
               {tasks.map((task) => {
