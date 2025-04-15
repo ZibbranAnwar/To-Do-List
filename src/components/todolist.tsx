@@ -24,6 +24,9 @@ export default function TodoList() {
   const [timeRemaining, setTimeRemaining] = useState<{ [key: string]: string }>({});
   const [popupMessage, setPopupMessage] = useState<string | null>(null);
 
+  const completedCount = tasks.filter((task) => task.completed).length;
+  const uncompletedCount = tasks.length - completedCount;
+
   const sortTasks = (taskList: Task[]) =>
     taskList.sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime());
 
@@ -43,10 +46,25 @@ export default function TodoList() {
   useEffect(() => {
     const interval = setInterval(() => {
       const newTimeRemaining: { [key: string]: string } = {};
-      tasks.forEach((task) => {
-        newTimeRemaining[task.id] = calculateTimeRemaining(task.deadline);
+      const updatedTasks = [...tasks];
+
+      tasks.forEach((task, index) => {
+        const remaining = calculateTimeRemaining(task.deadline);
+        newTimeRemaining[task.id] = remaining;
+
+        // Jika deadline sudah lewat dan task belum selesai, tandai sebagai selesai
+        if (remaining === 'Waktu habis!' && !task.completed) {
+          updatedTasks[index] = { ...task, completed: true };
+
+          // Update ke Firestore
+          updateDoc(doc(db, 'tasks', task.id), {
+            completed: true,
+          });
+        }
       });
+
       setTimeRemaining(newTimeRemaining);
+      setTasks(sortTasks(updatedTasks));
     }, 1000);
 
     return () => clearInterval(interval);
@@ -67,29 +85,48 @@ export default function TodoList() {
   };
 
   const addTask = async (): Promise<void> => {
-    const { value: formValues } = await Swal.fire({
-      title: 'Tambahkan tugas baru',
-      html:
-        '<input id="swal-input1" class="swal2-input" placeholder="Nama tugas">' +
-        '<input id="swal-input2" type="datetime-local" class="swal2-input">',
-      focusConfirm: false,
-      showCancelButton: true,
-      confirmButtonText: 'Tambah',
-      cancelButtonText: 'Batal',
-      preConfirm: () => {
-        return [
-          (document.getElementById('swal-input1') as HTMLInputElement)?.value,
-          (document.getElementById('swal-input2') as HTMLInputElement)?.value,
-        ];
-      },
-    });
+    let keepTrying = true;
 
-    if (formValues && formValues[0] && formValues[1]) {
+    while (keepTrying) {
+      const { value: formValues, isConfirmed } = await Swal.fire({
+        title: 'Tambahkan tugas baru',
+        html:
+          '<input id="swal-input1" class="swal2-input" placeholder="Nama tugas">' +
+          '<input id="swal-input2" type="datetime-local" class="swal2-input">' +
+          '<div id="swal-error" style="display: none; color: red; font-size: 0.9rem; margin-top: 5px;"></div>',
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Tambah',
+        cancelButtonText: 'Batal',
+        preConfirm: () => {
+          const text = (document.getElementById('swal-input1') as HTMLInputElement)?.value;
+          const deadline = (document.getElementById('swal-input2') as HTMLInputElement)?.value;
+
+          const errorDiv = document.getElementById('swal-error');
+          if (!text.trim() || !deadline.trim()) {
+            if (errorDiv) {
+              errorDiv.textContent = 'Nama tugas dan deadline harus diisi.';
+              errorDiv.style.display = 'block';
+            }
+            return false;
+          }
+
+          return [text, deadline];
+        },
+      });
+
+      if (!isConfirmed || !formValues) return;
+
+      const [text, deadline] = formValues;
+
+      keepTrying = false;
+
       const newTask: Omit<Task, 'id'> = {
-        text: formValues[0],
+        text,
         completed: false,
-        deadline: formValues[1],
+        deadline,
       };
+
       const docRef = await addDoc(collection(db, 'tasks'), newTask);
       const updatedTasks = [...tasks, { id: docRef.id, ...newTask }];
       setTasks(sortTasks(updatedTasks));
@@ -152,8 +189,7 @@ export default function TodoList() {
         background: 'linear-gradient(to bottom, black, white)',
       }}
     >
-      <div className="flex max-w-5xl w-full mx-auto p-4 bg-gray-300 bg-opacity-90 shadow-md rounded-lg flex-col">
-        {/* Header dan tombol */}
+      <div className="flex max-w-5xl w-full mx-auto p-4 bg-gray-300 bg-opacity-90 shadow-md rounded-lg flex-col h-[600px]">
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-2xl text-black font-bold pb-2 border-b-2 border-black">
             Hal Yang Harus Dikerjakan
@@ -166,7 +202,13 @@ export default function TodoList() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        {/* ⬇️ Tambahan info jumlah tugas */}
+        <div className="flex justify-between text-sm text-black font-medium mb-2 px-1">
+          <p>Selesai: {completedCount}</p>
+          <p>Belum Selesai: {uncompletedCount}</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto border border-black rounded-lg p-2 bg-white">
           <ul>
             <AnimatePresence>
               {tasks.map((task) => {
@@ -188,10 +230,9 @@ export default function TodoList() {
                   >
                     <div className="flex justify-between items-center gap-2">
                       <span
-                        className={`transition-500 ${
-                          task.completed || isExpired
-                            ? 'line-through'
-                            : 'font-semibold'
+                        className={`transition-500 ${task.completed || isExpired
+                          ? 'line-through'
+                          : 'font-semibold'
                         }`}
                       >
                         {task.text}
@@ -225,7 +266,6 @@ export default function TodoList() {
         </div>
       </div>
 
-      {/* Notifikasi pop-up */}
       <AnimatePresence>
         {popupMessage && (
           <motion.div
